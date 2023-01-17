@@ -1,0 +1,13 @@
+name: shiny_fantasy
+title: shiny_fantasy
+username:
+account: seanwllms
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3436368
+bundleId: 5588335
+url: https://seanwllms.shinyapps.io/shiny_fantasy/
+when: 1645072132.11337
+lastSyncTime: 1645072132.11337
+asMultiple: FALSE
+asStatic: FALSE

@@ -1,0 +1,189 @@
+---
+title: "Fantasy 2022"
+output: github_document 
+---
+
+```{r, echo=FALSE, warning=FALSE, error = FALSE, message = FALSE}
+library(knitr)
+source("compileleague.R")
+```
+
+####Today's auction
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+today <- c(
+"Nicky Lopez",
+"Willson Contreras",
+"Cole Irvin",
+"Justin Turner",
+"Abraham Toro",
+"David Bednar",
+"Eric Hosmer",
+"Eugenio Suarez"
+)%>%
+  tbl_df() %>%
+  set_names("Name")
+
+kable(left_join(today, hitterpitcher))
+
+```
+
+####Draft Status
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+
+#get number and average positional value for hitters
+hitter_status <- hitter_projections %>% 
+  filter(status != "drafted", 
+         dollar_value > 1) %>% 
+  group_by(position) %>% 
+  summarise(remaining = n(), 
+            max = max(dollar_value),
+            avg = mean(dollar_value)) %>% 
+  modify_at(c("avg", "max"), round, 1)
+
+#get number and average positional value for pitchers
+pitcher_status <- pitcher_projections %>% 
+  filter(status != "drafted", 
+         dollar_value > 1) %>% 
+  summarise(remaining = n(), 
+            max = max(dollar_value),
+            avg = mean(dollar_value)) %>% 
+  mutate(position = "pitcher") %>% 
+  modify_at(c("avg", "max"), round, 1) %>% 
+  select(position, remaining, max, avg)
+
+kable(rbind(hitter_status, pitcher_status))
+
+#calculate number of open roster spots at each position
+open_roster_spots <- roster_draft %>% 
+  group_by(position) %>% 
+  summarise(remaining = sum(player == "")) %>% 
+  pivot_wider(names_from = position, values_from = remaining) %>% 
+  mutate(C = C1 + C2,
+         OF = OF1 + OF2 + OF3 +OF4 + OF5 + OF6,
+         P = P1+P2+P3+P4+P5+P6+P7+P8+P9+P10) %>% 
+  select(!(P1:P9)) %>% 
+  select(!(B1:B9)) %>% 
+  select(!(OF1:OF6)) %>% 
+  select(!(C1:C2)) %>% 
+  pivot_longer(cols = everything()) 
+
+tot_picks <- data.frame(name = "Total",
+                        value = sum(open_roster_spots$value))
+
+
+picks_left <- rbind(open_roster_spots, tot_picks)
+
+kable(picks_left)
+
+```
+
+
+####Current Standings
+```{r, echo = FALSE, warning=FALSE}
+library(knitr)
+standings <- standings.output %>% 
+  mutate(hit_points = R_points + HR_points + RBI_points + SB_points + AVG_points,
+         pitch_points = ERA_points + WHIP_points + K_points + SV_points + W_points,
+         max_bid = left - picks_left + 1) %>%
+  select(team, 
+         #spent, 
+         #left, 
+         #picks.left, 
+         #max_bid, 
+         total_points, 
+         hit_points,
+         pitch_points) %>% 
+  kable()
+
+standings
+```
+
+####Top Remaining Pitchers
+```{r, echo = FALSE}
+
+toppitch <- filter(pitcher_projections, status != "drafted") %>%
+      mutate(pts = marginal_total_points, dlr = dollar_value) %>%
+      select(Name, Team, IP, ERA, WHIP, K, SV, W, pts, dlr) %>% 
+      filter(row_number() < 16)
+
+kable(toppitch)
+```
+
+####Top Remaining Hitters
+```{r, echo = FALSE}
+topdh <- filter(hitter_projections, status != "drafted") %>%
+      mutate(pts = marginal_total_points, dlr = dollar_value) %>%
+      select(Name, Team, PA, R, HR, RBI, SB, AVG, pts, dlr)  %>%
+      arrange(-dlr) %>% 
+      filter(row_number() < 16)
+
+kable(topdh)
+```
+
+```{r, echo = FALSE,warning=FALSE, error = FALSE, message = FALSE}
+####Dollars vs. projected points
+library(ggplot2)
+library(ggrepel)
+plot1 <- ggplot(standings.output, aes(x=spent, y=total_points)) + 
+  geom_point() +
+  theme_minimal() +
+  xlab("Dollars Spent") +
+  ylab("Projected Points")+
+  geom_smooth(method = lm, se = FALSE, size = .4)+
+  geom_text_repel(aes(x=spent, y=total_points, label = team)) 
+
+plot1 
+
+model <- predict(lm(total_points ~ spent, data = standings.output)) %>% 
+  tbl_df() %>% 
+  add_rownames() 
+
+
+
+# delta <- select(standings.output, total_points) %>% 
+#   add_rownames() %>% 
+#   left_join(model) %>% 
+#   mutate(delta = total_points - value) %>% 
+#   arrange(-delta)
+# 
+# delta
+```
+
+####Remaining Picks vs. projected points
+```{r, echo = FALSE,warning=FALSE, error = FALSE, message = FALSE}
+library(ggplot2)
+library(ggrepel)
+plot <- ggplot(standings.output, aes(x=picks_left, y=total_points)) + 
+  geom_point() +
+  theme_minimal() +
+  xlab("Remaining Picks") +
+  ylab("Projected Points")+
+  geom_smooth(method = lm, se = FALSE, size = .4)+
+  geom_text_repel(aes(x=picks_left, y=total_points, label = team)) 
+
+plot
+  
+```
+
+####Best Draft Picks
+```{r, echo = FALSE, warning=FALSE, error = FALSE, message = FALSE}
+library(lubridate)
+valuepicks <- draftpicks %>% 
+  left_join(hitter_projections, by=c("player"="Name")) %>% 
+  left_join(pitcher_projections, by=c("player"="Name")) %>%
+  mutate(drafted=ymd(drafted)) %>% 
+  filter(year(drafted)==2020) %>% 
+  select(team, player, salary, dollar_value.x, dollar_value.y) %>% 
+  mutate(dollar_value = pmax(dollar_value.x, dollar_value.y, na.rm=TRUE),
+         equity = dollar_value - salary) %>% 
+  arrange(-equity) %>% 
+  select(team, player, salary, dollar_value, equity) %>% 
+  filter(row_number() <21)
+
+kable(valuepicks)
+```
+
+####Unmatched Draft Picks
+```{r, echo = FALSE,warning=FALSE, error = FALSE, message = FALSE}
+kable(drafterrors)
+```
